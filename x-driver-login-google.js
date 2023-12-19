@@ -1,10 +1,12 @@
-const puppeteer = require('puppeteer'); // v20.7.4 or later
+import puppeteer from 'puppeteer';
+import { xLonginGoogle } from './data/x-login.js';
+import { sleep } from './utils.js';
 
 (async () => {
-  const browser = await puppeteer.launch({ headless: false });
+  const browser = await puppeteer.launch({ headless: false, args: ['--lang=ja'] });
   const page = await browser.newPage();
+  await page.setExtraHTTPHeaders({ 'Accept-Language': 'ja-JP' });
   const timeout = 25000;
-  const sleep = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
   console.log('start');
   page.setDefaultTimeout(timeout);
 
@@ -16,6 +18,8 @@ const puppeteer = require('puppeteer'); // v20.7.4 or later
   await targetPage.goto('chrome://newtab/');
   await targetPage.goto('https://twitter.com/');
 
+  sleep(1000);
+  await targetPage.waitForSelector('a[href="/login"]', { timeout: timeout });
   const loginLink = await targetPage.$('a[href="/login"]');
   if (loginLink) {
     await page.click('a[href="/login"]');
@@ -24,22 +28,23 @@ const puppeteer = require('puppeteer'); // v20.7.4 or later
   }
   sleep(1000);
 
-  // Click sign in with google
   await targetPage.waitForSelector('span ::-p-text(Google でログイン)');
-  await targetPage.click('span ::-p-text(Google でログイン)');
 
-  // https://accounts.google.com/v3/signin/identifier?continue
-  const target = await browser.waitForTarget(
-    (t) =>
-      t.url() ===
-      'https://accounts.google.com/gsi/button?theme=outline&size=large&shape=circle&logo_alignment=center&text=signin_with&width=300&client_id=49625052041-kgt0hghf445lmcmhijv46b715m2mpbct.apps.googleusercontent.com&iframe_id=gsi_24610_181749&as=xKFsQUlzoY3sonm6o9mwFQ&hl=ja',
-    { timeout }
-  );
-  const popupPage = await target.page();
-  popupPage.setDefaultTimeout(timeout);
+  // click Google login button then wait for popup
+  const [googleSignInPopup] = await Promise.all([
+    new Promise((resolve) => page.once('popup', resolve)),
+    page.click('span ::-p-text(Google でログイン)'),
+  ]);
 
-  console.log(popupPage.title);
-  await popupPage.waitForSelector('input[type="email"]');
-  console.log(popupPage.title);
-  await popupPage.type('input[type="email"]', 'test@example.com');
+  await googleSignInPopup.waitForSelector('input[type="email"]');
+  await googleSignInPopup.type('input[type="email"]', xLonginGoogle.id);
+
+  sleep(2000);
+
+  await googleSignInPopup.click('span ::-p-text(次へ)');
+  await googleSignInPopup.waitForSelector('input[type="password"]');
+  sleep(2000);
+  await googleSignInPopup.type('input[type="password"]', xLonginGoogle.password);
+  sleep(500);
+  await googleSignInPopup.click('span ::-p-text(次へ)');
 })();
